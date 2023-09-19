@@ -1,11 +1,11 @@
 [package]
-name = "getters"
+name = "getter-methods"
 version = "0.1.0"
 edition = "2021"
 authors = ["Luke Sneeringer <luke@sneeringer.com>"]
 description = "Derive macro to create getter / accessor methods."
 license = "MIT"
-repository = "https://github.com/lukesneeringer/getters"
+repository = "https://github.com/lukesneeringer/getter-methods"
 
 [dependencies]
 proc-macro2 = "1"

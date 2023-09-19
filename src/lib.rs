@@ -1,11 +1,12 @@
-//! `getters` is a derive macro that will implement accessor methods for each field on the struct.
+//! `getter_methods` is a derive macro that will implement accessor methods for each field on the
+//! struct.
 //!
-//! Using `getters` is straightforward: simply derive it:
+//! Using `getter_methods` is straightforward: simply derive it:
 //!
 //! ```
-//! use getters::Getters;
+//! use getter_methods::GetterMethods;
 //!
-//! #[derive(Getters)]
+//! #[derive(GetterMethods)]
 //! struct Foo {
 //!   bar: String,
 //!   baz: i64,
@@ -27,12 +28,12 @@
 //! If you don't want a certain field to have an accessor method, annotate it:
 //!
 //! ```compile_fail
-//! use getters::Getters;
+//! use getter_methods::GetterMethods;
 //!
-//! #[derive(Getters)]
+//! #[derive(GetterMethods)]
 //! struct Foo {
 //!   bar: String,
-//!   #[getters(skip)]
+//!   #[getter_methods(skip)]
 //!   baz: i64,
 //! }
 //!
@@ -55,8 +56,8 @@ use syn::spanned::Spanned;
 /// - Primitives (e.g. [`i64`]) return a copy of themselves.
 /// - [`String`] fields return [`&str`][`str`].
 /// - Fields of any other type `T` return `&T`.
-#[proc_macro_derive(Getters, attributes(doc, getters))]
-pub fn derive_getters(input: TokenStream1) -> TokenStream1 {
+#[proc_macro_derive(GetterMethods, attributes(doc, getter_methods))]
+pub fn derive_getter_methods(input: TokenStream1) -> TokenStream1 {
   getters(input.into()).unwrap_or_else(|e| e.into_compile_error()).into()
 }
 
@@ -69,7 +70,7 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
   // Iterate over each field and create an accessor method.
   'field: for field in struct_.fields {
     // Sanity check: Do we need to do anything unusual?
-    if let Some(getters_attr) = field.attrs.iter().find(|a| a.path().is_ident("getters")) {
+    if let Some(getters_attr) = field.attrs.iter().find(|a| a.path().is_ident("getter_methods")) {
       let nested =
         getters_attr.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
       for m in nested {
