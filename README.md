@@ -1,14 +1,18 @@
-# getters
+# getter-methods
 
-This is `getters`, a derive macro that will generate an impl with accessor methods for each field
-on the struct.
+[![ci](https://github.com/lukesneeringer/getter-methods/actions/workflows/ci.yaml/badge.svg)](https://github.com/lukesneeringer/getter-methods/actions/workflows/ci.yaml)
+[![docs](https://img.shields.io/badge/docs-release-blue)](https://docs.rs/getter-methods/)
+![license](https://img.shields.io/badge/license-MIT-blue)
 
-Using `getters` is straightforward: simply derive it:
+This is `getter-methods`, a derive macro that will generate an impl with accessor methods for each
+field on the struct.
+
+Using `getter-methods` is straightforward: simply derive it:
 
 ```rs
-use getters::Getters;
+use getter_methods::GetterMethods;
 
-#[derive(Getters)]
+#[derive(GetterMethods)]
 struct Foo {
   bar: String,
   baz: i64,
@@ -19,4 +23,4 @@ assert_eq!(foo.bar(), "bacon");
 assert_eq!(foo.baz(), 42);
 ```
 
-For more, see [the documentation](https://docs.rs/getters).
+For more, see [the documentation](https://docs.rs/getter-methods).
