@@ -116,6 +116,7 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
     };
     getters.push(quote! {
       #[doc = #doc]
+      #[inline]
       pub fn #field_ident(&self) -> #return_type {
         #getter_impl
       }
