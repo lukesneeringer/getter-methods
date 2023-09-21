@@ -88,6 +88,9 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
         if let syn::Meta::NameValue(nv) = &doc_attr.meta {
           if let syn::Expr::Lit(l) = &nv.value {
             if let syn::Lit::Str(s) = &l.lit {
+              if !answer.is_empty() {
+                answer += "\n";
+              }
               answer += s.value().as_str();
             }
           }
