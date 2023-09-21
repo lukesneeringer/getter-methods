@@ -1,6 +1,6 @@
 [package]
 name = "getter-methods"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Luke Sneeringer <luke@sneeringer.com>"]
 description = "Derive macro to create getter / accessor methods."

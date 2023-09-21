@@ -19,6 +19,16 @@
 //! # }
 //! ```
 //!
+//! ## Return types
+//!
+//! Accessors will get a convenient return type depending on the type of the field on the struct:
+//!
+//! Struct Field                 | Accessor Return Type
+//! ---------------------------- | --------------------
+//! [`String`]                   | [`&str`][`str`]
+//! Primitive `T` (e.g. [`i64`]) | `T`
+//! Any other `T`                | `&T`
+//!
 //! ## Documentation
 //!
 //! Any docstrings used on the fields are copied to the accessor method.
