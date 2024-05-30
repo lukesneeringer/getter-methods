@@ -29,9 +29,18 @@
 //! Primitive `T` (e.g. [`i64`]) | `T`
 //! Any other `T`                | `&T`
 //!
-//! ## Documentation
+//! ## Returning Copies
 //!
-//! Any docstrings used on the fields are copied to the accessor method.
+//! If you want a non-primitive `T` that implements `Copy` to return itself rather than a
+//! reference, annotate it with `#[getter_methods(copy)]`:
+//!
+//! ```
+//! #[derive(GetterMethods)]
+//! struct Foo {
+//!   #[getter_methods(copy)]
+//!   bar: Option<i64>,
+//! }
+//! ```
 //!
 //! ## Skipping fields
 //!
@@ -52,6 +61,11 @@
 //! assert_eq!(foo.bar(), "bacon");
 //! assert_eq!(foo.baz(), 42);  // Compile error: There is no `foo.baz()`.
 //! # }
+//! ```
+//!
+//! ## Documentation
+//!
+//! Any docstrings used on the fields are copied to the accessor method.
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::TokenStream;
@@ -63,9 +77,13 @@ use syn::spanned::Spanned;
 ///
 /// The output types are determined based on the input types, and follow the following rules:
 ///
-/// - Primitives (e.g. [`i64`]) return a copy of themselves.
-/// - [`String`] fields return [`&str`][`str`].
-/// - Fields of any other type `T` return `&T`.
+/// 1. Primitives (e.g. [`i64`]) return a copy of themselves.
+/// 2. [`String`] fields return [`&str`][`str`].
+/// 3. Fields of any other type `T` return `&T`.
+///
+/// Note: You can use `#[getter_methods(copy)] to override rule 3 and make other types that
+/// implement [`Copy`] also return copies; this can be done either on the struct or on individual
+/// fields.
 #[proc_macro_derive(GetterMethods, attributes(doc, getter_methods))]
 pub fn derive_getter_methods(input: TokenStream1) -> TokenStream1 {
   getters(input.into()).unwrap_or_else(|e| e.into_compile_error()).into()
@@ -77,9 +95,20 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
   // Parse the tokens as a struct.
   let struct_ = syn::parse2::<syn::ItemStruct>(input)?;
 
+  // Look for attributes that may modify behavior.
+  let copy_all = match struct_.attrs.iter().find(|a| a.path().is_ident("getter_methods")) {
+    Some(attr) => {
+      let args =
+        attr.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
+      args[0].path().is_ident("copy")
+    },
+    None => false,
+  };
+
   // Iterate over each field and create an accessor method.
   'field: for field in struct_.fields {
     // Sanity check: Do we need to do anything unusual?
+    let mut copy = copy_all;
     if let Some(getters_attr) = field.attrs.iter().find(|a| a.path().is_ident("getter_methods")) {
       let nested =
         getters_attr.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
@@ -87,6 +116,9 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
         // Do we need to skip?
         if m.path().is_ident("skip") {
           continue 'field;
+        }
+        if m.path().is_ident("copy") {
+          copy = true;
         }
       }
     }
@@ -122,15 +154,22 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
           "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
           | "u128" | "usize" | "f32" | "f64" | "char" =>
             (quote! { #field_type }, quote! { self.#field_ident }),
-          _ => (quote! { &#field_type }, quote! { &self.#field_ident }),
+          _ => match copy {
+            true => (quote! { #field_type }, quote! { self.#field_ident }),
+            false => (quote! { &#field_type }, quote! { &self.#field_ident }),
+          },
         }
       },
       _ => (quote! { &#field_type }, quote! { &self.#field_ident }),
     };
+    let const_ = match return_type.to_string() == "& str" {
+      true => quote! {},
+      false => quote! { const },
+    };
     getters.push(quote! {
       #[doc = #doc]
       #[inline]
-      pub fn #field_ident(&self) -> #return_type {
+      pub #const_ fn #field_ident(&self) -> #return_type {
         #getter_impl
       }
     });
