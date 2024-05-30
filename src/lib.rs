@@ -35,11 +35,14 @@
 //! reference, annotate it with `#[getter_methods(copy)]`:
 //!
 //! ```
+//! use getter_methods::GetterMethods;
+//!
 //! #[derive(GetterMethods)]
 //! struct Foo {
 //!   #[getter_methods(copy)]
 //!   bar: Option<i64>,
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! ## Skipping fields
