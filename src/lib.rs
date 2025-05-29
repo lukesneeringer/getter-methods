@@ -180,9 +180,9 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
 
   // Write the final output with the accessor implementation.
   let ident = &struct_.ident;
-  let generics = &struct_.generics;
+  let (impl_generics, ty_generics, where_clause) = &struct_.generics.split_for_impl();
   Ok(quote! {
-    impl #generics #ident #generics {
+    impl #impl_generics #ident #ty_generics #where_clause {
       #(#getters)*
     }
   })
