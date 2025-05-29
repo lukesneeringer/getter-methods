@@ -1,6 +1,6 @@
 [package]
 name = "getter-methods"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 authors = ["Luke Sneeringer <luke@sneeringer.com>"]
 description = "Derive macro to create getter / accessor methods."
@@ -10,7 +10,7 @@ repository = "https://github.com/lukesneeringer/getter-methods"
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"]}
+syn = { version = "2", features = ["full"] }
 
 [dev-dependencies]
 assert2 = "0.3"
