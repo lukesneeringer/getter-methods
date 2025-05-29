@@ -182,6 +182,7 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
   let ident = &struct_.ident;
   let (impl_generics, ty_generics, where_clause) = &struct_.generics.split_for_impl();
   Ok(quote! {
+    #[automatically_derived]
     impl #impl_generics #ident #ty_generics #where_clause {
       #(#getters)*
     }
