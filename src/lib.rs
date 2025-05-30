@@ -165,14 +165,10 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
       },
       _ => (quote! { &#field_type }, quote! { &self.#field_ident }),
     };
-    let const_ = match return_type.to_string() == "& str" {
-      true => quote! {},
-      false => quote! { const },
-    };
     getters.push(quote! {
       #[doc = #doc]
       #[inline]
-      pub #const_ fn #field_ident(&self) -> #return_type {
+      pub const fn #field_ident(&self) -> #return_type {
         #getter_impl
       }
     });
