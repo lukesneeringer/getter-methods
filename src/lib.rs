@@ -29,6 +29,7 @@
 //! [`String`]                   | [`&str`][`str`]
 //! [`Vec<T>`][Vec]              | `&[T]`
 //! [`Box<T>`][Box]              | `&T`
+//! [`Option<T>`][Option]        | `Option<&T>`
 //! Any `&'a T`                  | `&'a T`
 //! Any `*T`                     | `*T`
 //! Any other `T`                | `&T`
@@ -90,8 +91,9 @@ use syn::spanned::Spanned;
 /// 2. [`String`] fields return [`&str`][`str`].
 /// 3. [`Vec<T>`][Vec] fields return `&[T]`
 /// 4. [`Box<T>`][Box] fields return `&T`.
-/// 5. References and pointers return copies of themselves.
-/// 6. Fields of any other type `T` return `&T`.
+/// 5. [`Option<T>`][Option] fields return `Option<&T>`.
+/// 6. References and pointers return copies of themselves.
+/// 7. Fields of any other type `T` return `&T`.
 ///
 /// Note: You can use `#[getters(copy)] to override rule 6 and make other types that implement
 /// [`Copy`] also return copies; this can be done either on the struct or on individual fields.
@@ -195,6 +197,7 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
       &field.ident.ok_or_else(|| syn::Error::new(span, "Fields must be named."))?;
     let field_type = &field.ty;
     let vis = &field_opts.vis;
+    let mut const_ = quote! { const };
     let (return_type, getter_impl) = match field_type {
       syn::Type::Path(p) => {
         let Some(segment) = &p.path.segments.last() else { Err(error!("Unparseable type."))? };
@@ -205,31 +208,50 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
             (quote! { #field_type }, quote! { self.#field_ident }),
           // 2. `String` returns `&str`
           "String" => (quote! { &str }, quote! { self.#field_ident.as_str() }),
-          // 3. `Vec` returns `&[T]`.
+          // 3. `Vec<T>` returns `&[T]`.
           "Vec" => {
             let ty = generic!(segment);
             (quote! { &[#ty] }, quote! { self.#field_ident.as_slice() })
           },
-          // 4. `Box` returns `&T`.
+          // 4. `Box<T>` returns `&T`.
           "Box" => {
             let ty = generic!(segment);
             (quote! { &#ty }, quote! { &self.#field_ident })
           },
-          // 5. Fields of any other type `T` return `&T`.
+          // 5. `Option<T>` returns `Option<&T>`.
+          "Option" => {
+            let ty = generic!(segment);
+            (quote! { Option<&#ty> }, quote! { self.#field_ident.as_ref() })
+          },
+          // 6. `Rc<T>` and `Arc<T>` return clones.
+          "Rc" => {
+            let ty = generic!(segment);
+            const_ = quote! {};
+            (quote! { ::std::rc::Rc<#ty> }, quote! { ::std::rc::Rc::clone(&self.#field_ident) })
+          },
+          "Arc" => {
+            let ty = generic!(segment);
+            const_ = quote! {};
+            (
+              quote! { ::std::sync::Arc<#ty> },
+              quote! { ::std::sync::Arc::clone(&self.#field_ident)},
+            )
+          },
+          // 8. Fields of any other type `T` return `&T`.
           _ => match field_opts.copy {
             true => (quote! { #field_type }, quote! { self.#field_ident }),
             false => (quote! { &#field_type }, quote! { &self.#field_ident }),
           },
         }
       },
-      // 6. References and pointers return copies of themselves.
+      // 7. References and pointers return copies of themselves.
       syn::Type::Reference(ref_) => (quote! { #ref_ }, quote! { self.#field_ident }),
       syn::Type::Ptr(ptr) => (quote! { #ptr }, quote! { self.#field_ident }),
       _ => (quote! { &#field_type }, quote! { &self.#field_ident }),
     };
     getters.push(quote! {
       #doc #[inline]
-      #vis const fn #field_ident(&self) -> #return_type {
+      #vis #const_ fn #field_ident(&self) -> #return_type {
         #getter_impl
       }
     });

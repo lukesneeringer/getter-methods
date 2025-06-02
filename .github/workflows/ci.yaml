@@ -8,14 +8,29 @@ jobs:
   doctests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: cargo test
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cargo run --example arc
+          cargo run --example box
+          cargo run --example option
+          cargo run --example rc
+          cargo run --example ref
+          cargo run --example string
+          cargo run --example vec
+          cargo run --example vis
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: true
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup toolchain install nightly
       - run: rustup component add rustfmt --toolchain nightly
       - run: cargo +nightly fmt -- --check
@@ -24,7 +39,7 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: cargo doc --no-deps --bins
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
