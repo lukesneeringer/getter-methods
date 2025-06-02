@@ -4,9 +4,9 @@
 //! Using `getter_methods` is straightforward: simply derive it:
 //!
 //! ```
-//! use getter_methods::GetterMethods;
+//! use getter_methods::Getters;
 //!
-//! #[derive(GetterMethods)]
+//! #[derive(Getters)]
 //! struct Foo {
 //!   bar: String,
 //!   baz: i64,
@@ -25,21 +25,25 @@
 //!
 //! Struct Field                 | Accessor Return Type
 //! ---------------------------- | --------------------
-//! [`String`]                   | [`&str`][`str`]
 //! Primitive `T` (e.g. [`i64`]) | `T`
+//! [`String`]                   | [`&str`][`str`]
+//! [`Vec<T>`][Vec]              | `&[T]`
+//! [`Box<T>`][Box]              | `&T`
+//! Any `&'a T`                  | `&'a T`
+//! Any `*T`                     | `*T`
 //! Any other `T`                | `&T`
 //!
 //! ## Returning Copies
 //!
 //! If you want a non-primitive `T` that implements `Copy` to return itself rather than a
-//! reference, annotate it with `#[getter_methods(copy)]`:
+//! reference, annotate it with `#[getters(copy)]`:
 //!
 //! ```
-//! use getter_methods::GetterMethods;
+//! use getter_methods::Getters;
 //!
-//! #[derive(GetterMethods)]
+//! #[derive(Getters)]
 //! struct Foo {
-//!   #[getter_methods(copy)]
+//!   #[getters(copy)]
 //!   bar: Option<i64>,
 //! }
 //! # fn main() {}
@@ -50,12 +54,12 @@
 //! If you don't want a certain field to have an accessor method, annotate it:
 //!
 //! ```compile_fail
-//! use getter_methods::GetterMethods;
+//! use getter_methods::Getters;
 //!
-//! #[derive(GetterMethods)]
+//! #[derive(Getters)]
 //! struct Foo {
 //!   bar: String,
-//!   #[getter_methods(skip)]
+//!   #[getters(skip)]
 //!   baz: i64,
 //! }
 //!
@@ -71,9 +75,11 @@
 //! Any docstrings used on the fields are copied to the accessor method.
 
 use proc_macro::TokenStream as TokenStream1;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
+use quote::ToTokens;
 use quote::quote;
-use syn::punctuated::Punctuated;
+use syn::Visibility;
 use syn::spanned::Spanned;
 
 /// Derive accessor or "getter" methods for each field on the struct.
@@ -82,14 +88,40 @@ use syn::spanned::Spanned;
 ///
 /// 1. Primitives (e.g. [`i64`]) return a copy of themselves.
 /// 2. [`String`] fields return [`&str`][`str`].
-/// 3. Fields of any other type `T` return `&T`.
+/// 3. [`Vec<T>`][Vec] fields return `&[T]`
+/// 4. [`Box<T>`][Box] fields return `&T`.
+/// 5. References and pointers return copies of themselves.
+/// 6. Fields of any other type `T` return `&T`.
 ///
-/// Note: You can use `#[getter_methods(copy)] to override rule 3 and make other types that
-/// implement [`Copy`] also return copies; this can be done either on the struct or on individual
-/// fields.
-#[proc_macro_derive(GetterMethods, attributes(doc, getter_methods))]
+/// Note: You can use `#[getters(copy)] to override rule 6 and make other types that implement
+/// [`Copy`] also return copies; this can be done either on the struct or on individual fields.
+#[proc_macro_derive(Getters, attributes(doc, getters))]
 pub fn derive_getter_methods(input: TokenStream1) -> TokenStream1 {
   getters(input.into()).unwrap_or_else(|e| e.into_compile_error()).into()
+}
+
+/// Get the ident of a meta as a &str. Used for clean `match` statements.
+macro_rules! ident_str {
+  ($meta:ident ) => {
+    $meta.path.get_ident().map(|i| i.to_string()).unwrap_or_default().as_str()
+  };
+}
+
+/// Create a `syn` Error.
+macro_rules! error {
+ ($msg:literal $(,$e:expr)*) => {
+  syn::Error::new(proc_macro2::Span::call_site(), format!($msg $(,$e)*))
+ }
+}
+
+/// Parse out the generic of a generic type, e.g. `T` from `Vec<T>`.
+macro_rules! generic {
+  ($segment:ident) => {{
+    let syn::PathArguments::AngleBracketed(angle_generic) = &$segment.arguments else {
+      return Err(error!("Unparseable type: {}", $segment.to_token_stream().to_string()));
+    };
+    angle_generic.args.clone()
+  }};
 }
 
 fn getters(input: TokenStream) -> syn::Result<TokenStream> {
@@ -99,32 +131,42 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
   let struct_ = syn::parse2::<syn::ItemStruct>(input)?;
 
   // Look for attributes that may modify behavior.
-  let copy_all = match struct_.attrs.iter().find(|a| a.path().is_ident("getter_methods")) {
-    Some(attr) => {
-      let args =
-        attr.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
-      args[0].path().is_ident("copy")
-    },
-    None => false,
+  let struct_opts = {
+    let mut struct_opts = StructOptions::default();
+    if let Some(attr) = struct_.attrs.iter().find(|a| a.path().is_ident("getters")) {
+      attr.parse_nested_meta(|meta| {
+        match ident_str!(meta) {
+          "copy" => struct_opts.copy = true,
+          "vis" => struct_opts.vis = meta.value()?.parse::<Visibility>()?,
+          other => Err(error!("Invalid option: {}", other))?,
+        };
+        Ok(())
+      })?;
+    };
+    struct_opts
   };
 
   // Iterate over each field and create an accessor method.
-  'field: for field in struct_.fields {
-    // Sanity check: Do we need to do anything unusual?
-    let mut copy = copy_all;
-    if let Some(getters_attr) = field.attrs.iter().find(|a| a.path().is_ident("getter_methods")) {
-      let nested =
-        getters_attr.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
-      for m in nested {
-        // Do we need to skip?
-        if m.path().is_ident("skip") {
-          continue 'field;
-        }
-        if m.path().is_ident("copy") {
-          copy = true;
-        }
+  for field in struct_.fields {
+    // Do we need to do anything unusual?
+    let field_opts = {
+      let mut field_opts = struct_opts.field_opts();
+      if let Some(getters_attr) = field.attrs.iter().find(|a| a.path().is_ident("getters")) {
+        getters_attr.parse_nested_meta(|meta| {
+          match ident_str!(meta) {
+            "copy" => field_opts.copy = true,
+            "skip" => field_opts.skip = true,
+            "vis" => field_opts.vis = meta.value()?.parse::<Visibility>()?,
+            other => Err(error!("Invalid option: {}", other))?,
+          }
+          Ok(())
+        })?;
       }
-    }
+      if field_opts.skip {
+        continue;
+      }
+      field_opts
+    };
 
     // Preserve documentation from the field to the method.
     let doc = {
@@ -141,7 +183,10 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
           }
         }
       }
-      answer
+      match answer.is_empty() {
+        true => quote! {},
+        false => quote! { #[doc = #answer] },
+      }
     };
 
     // Render the appropriate accessor method.
@@ -149,26 +194,42 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
     let field_ident =
       &field.ident.ok_or_else(|| syn::Error::new(span, "Fields must be named."))?;
     let field_type = &field.ty;
+    let vis = &field_opts.vis;
     let (return_type, getter_impl) = match field_type {
       syn::Type::Path(p) => {
-        let ident = &p.path.segments.last().unwrap().ident;
-        match ident.to_string().as_str() {
-          "String" => (quote! { &str }, quote! { self.#field_ident.as_str() }),
+        let Some(segment) = &p.path.segments.last() else { Err(error!("Unparseable type."))? };
+        match segment.ident.to_string().as_str() {
+          // 1. Primitives return copies of themselves.
           "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
           | "u128" | "usize" | "f32" | "f64" | "char" =>
             (quote! { #field_type }, quote! { self.#field_ident }),
-          _ => match copy {
+          // 2. `String` returns `&str`
+          "String" => (quote! { &str }, quote! { self.#field_ident.as_str() }),
+          // 3. `Vec` returns `&[T]`.
+          "Vec" => {
+            let ty = generic!(segment);
+            (quote! { &[#ty] }, quote! { self.#field_ident.as_slice() })
+          },
+          // 4. `Box` returns `&T`.
+          "Box" => {
+            let ty = generic!(segment);
+            (quote! { &#ty }, quote! { &self.#field_ident })
+          },
+          // 5. Fields of any other type `T` return `&T`.
+          _ => match field_opts.copy {
             true => (quote! { #field_type }, quote! { self.#field_ident }),
             false => (quote! { &#field_type }, quote! { &self.#field_ident }),
           },
         }
       },
+      // 6. References and pointers return copies of themselves.
+      syn::Type::Reference(ref_) => (quote! { #ref_ }, quote! { self.#field_ident }),
+      syn::Type::Ptr(ptr) => (quote! { #ptr }, quote! { self.#field_ident }),
       _ => (quote! { &#field_type }, quote! { &self.#field_ident }),
     };
     getters.push(quote! {
-      #[doc = #doc]
-      #[inline]
-      pub const fn #field_ident(&self) -> #return_type {
+      #doc #[inline]
+      #vis const fn #field_ident(&self) -> #return_type {
         #getter_impl
       }
     });
@@ -183,4 +244,30 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
       #(#getters)*
     }
   })
+}
+
+/// The options for the full struct.
+struct StructOptions {
+  copy: bool,
+  vis: Visibility,
+}
+
+impl StructOptions {
+  /// Initialize a [`FieldOptions`] with inherited defaults.
+  fn field_opts(&self) -> FieldOptions {
+    FieldOptions { copy: self.copy, skip: false, vis: self.vis.clone() }
+  }
+}
+
+impl Default for StructOptions {
+  fn default() -> Self {
+    Self { copy: false, vis: Visibility::Public(syn::Token![pub](Span::call_site())) }
+  }
+}
+
+/// The optoions for a specific field.
+struct FieldOptions {
+  copy: bool,
+  skip: bool,
+  vis: Visibility,
 }
