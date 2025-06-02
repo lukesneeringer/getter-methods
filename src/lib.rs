@@ -30,6 +30,8 @@
 //! [`Vec<T>`][Vec]              | `&[T]`
 //! [`Box<T>`][Box]              | `&T`
 //! [`Option<T>`][Option]        | `Option<&T>`
+//! [`Rc<T>`][std::rc::Rc]       | `Rc<T>`
+//! [`Arc<T>`][std::sync::Arc]   | `Arc<T>`
 //! Any `&'a T`                  | `&'a T`
 //! Any `*T`                     | `*T`
 //! Any other `T`                | `&T`
@@ -92,8 +94,9 @@ use syn::spanned::Spanned;
 /// 3. [`Vec<T>`][Vec] fields return `&[T]`
 /// 4. [`Box<T>`][Box] fields return `&T`.
 /// 5. [`Option<T>`][Option] fields return `Option<&T>`.
-/// 6. References and pointers return copies of themselves.
-/// 7. Fields of any other type `T` return `&T`.
+/// 6. [`Rc<T>`][std::rc::Rc] and [`Arc<T>`][std::sync::Arc] return a clone of themselves.
+/// 7. References and pointers return copies of themselves.
+/// 8. Fields of any other type `T` return `&T`.
 ///
 /// Note: You can use `#[getters(copy)] to override rule 6 and make other types that implement
 /// [`Copy`] also return copies; this can be done either on the struct or on individual fields.
