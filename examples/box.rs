@@ -4,6 +4,7 @@ use getter_methods::Getters;
 
 #[derive(Debug, Getters)]
 struct Foo {
+  /// An integer.
   bar: Box<i64>,
 }
 
