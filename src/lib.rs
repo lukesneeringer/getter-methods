@@ -100,7 +100,7 @@ use syn::spanned::Spanned;
 ///
 /// Note: You can use `#[getters(copy)] to override rule 6 and make other types that implement
 /// [`Copy`] also return copies; this can be done either on the struct or on individual fields.
-#[proc_macro_derive(Getters, attributes(doc, getters))]
+#[proc_macro_derive(Getters, attributes(getters))]
 pub fn derive_getter_methods(input: TokenStream1) -> TokenStream1 {
   getters(input.into()).unwrap_or_else(|e| e.into_compile_error()).into()
 }
