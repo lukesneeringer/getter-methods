@@ -221,10 +221,13 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
             let ty = generic!(segment);
             (quote! { &#ty }, quote! { &self.#field_ident })
           },
-          // 5. `Option<T>` returns `Option<&T>`.
+          // 5. `Option<T>` returns `Option<&T>` (unless `#[getters(copy)]`).
           "Option" => {
             let ty = generic!(segment);
-            (quote! { Option<&#ty> }, quote! { self.#field_ident.as_ref() })
+            match field_opts.copy {
+              true => (quote! { Option<#ty> }, quote! { self.#field_ident }),
+              false => (quote! { Option<&#ty> }, quote! { self.#field_ident.as_ref() }),
+            }
           },
           // 6. `Rc<T>` and `Arc<T>` return clones.
           "Rc" => {
