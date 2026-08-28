@@ -198,7 +198,13 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
     let span = field.span();
     let field_ident =
       &field.ident.ok_or_else(|| syn::Error::new(span, "Fields must be named."))?;
-    let field_type = &field.ty;
+    let field_type = {
+      let mut field_type = &field.ty;
+      while let syn::Type::Group(g) = field_type {
+        field_type = &g.elem;
+      }
+      field_type
+    };
     let vis = &field_opts.vis;
     let mut const_ = quote! { const };
     let (return_type, getter_impl) = match field_type {

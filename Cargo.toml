@@ -1,6 +1,6 @@
 [package]
 name = "getter-methods"
-version = "2.0.2"
+version = "2.0.3"
 edition = "2024"
 rust-version = "1.87"
 authors = ["Luke Sneeringer <luke@sneeringer.com>"]
@@ -11,10 +11,10 @@ repository = "https://github.com/lukesneeringer/getter-methods"
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 
 [dev-dependencies]
-assert2 = "0.3"
+assert2 = "0.4"
 
 [lib]
 proc-macro = true
