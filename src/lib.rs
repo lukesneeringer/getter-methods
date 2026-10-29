@@ -73,6 +73,37 @@
 //! # }
 //! ```
 //!
+//! ## Implementing a trait
+//!
+//! If you want the accessor methods to implement a trait rather than be inherent methods on the
+//! struct, specify the trait with `#[getters(trait_impl = ...)]`:
+//!
+//! ```
+//! use getter_methods::Getters;
+//!
+//! trait FooGetters<T> {
+//!   fn bar(&self) -> &str;
+//!   fn baz(&self) -> Option<&T>;
+//! }
+//!
+//! #[derive(Getters)]
+//! #[getters(trait_impl = FooGetters<T>)]
+//! struct Foo<T> {
+//!   bar: String,
+//!   baz: Option<T>,
+//! }
+//!
+//! # fn main() {
+//! let foo = Foo { bar: "bacon".into(), baz: Some(42) };
+//! assert_eq!(foo.bar(), "bacon");
+//! assert_eq!(foo.baz(), Some(&42));
+//! # }
+//! ```
+//!
+//! The trait's method signatures must match the generated accessors (see [Return
+//! types](#return-types) above). Trait methods are not `const`, and `#[getters(vis = ...)]` is not
+//! supported on fields of a struct that uses `trait_impl`.
+//!
 //! ## Documentation
 //!
 //! Any docstrings used on the fields are copied to the accessor method.
@@ -82,6 +113,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use quote::quote;
+use syn::Path;
 use syn::Visibility;
 use syn::spanned::Spanned;
 
@@ -143,6 +175,7 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
         match ident_str!(meta) {
           "copy" => struct_opts.copy = true,
           "vis" => struct_opts.vis = meta.value()?.parse::<Visibility>()?,
+          "trait_impl" => struct_opts.trait_impl = Some(meta.value()?.parse::<Path>()?),
           other => Err(error!("Invalid option: {}", other))?,
         };
         Ok(())
@@ -161,7 +194,10 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
           match ident_str!(meta) {
             "copy" => field_opts.copy = true,
             "skip" => field_opts.skip = true,
-            "vis" => field_opts.vis = meta.value()?.parse::<Visibility>()?,
+            "vis" => match &struct_opts.trait_impl {
+              Some(_) => Err(error!("vis is unsupported in custom traits"))?,
+              None => field_opts.vis = meta.value()?.parse::<Visibility>()?,
+            },
             other => Err(error!("Invalid option: {}", other))?,
           }
           Ok(())
@@ -206,7 +242,11 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
       field_type
     };
     let vis = &field_opts.vis;
-    let mut const_ = quote! { const };
+    // Trait methods can not be `const`.
+    let mut const_ = match struct_opts.trait_impl.is_some() {
+      true => quote! {},
+      false => quote! { const },
+    };
     let (return_type, getter_impl) = match field_type {
       syn::Type::Path(p) => {
         let Some(segment) = &p.path.segments.last() else { Err(error!("Unparseable type."))? };
@@ -254,6 +294,10 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
             true => (quote! { #field_type }, quote! { self.#field_ident }),
             false => (quote! { &#field_type }, quote! { &self.#field_ident }),
           },
+          // FIXME(3.x):
+          // - PhantomData should auto-skip
+          // - Option<String> should be Option<&str>
+          // - bool should be included in the list of primitives.
         }
       },
       // 7. References and pointers return copies of themselves.
@@ -271,10 +315,11 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
 
   // Write the final output with the accessor implementation.
   let ident = &struct_.ident;
+  let trait_ = struct_opts.trait_impl.map(|i| quote! { #i for }).unwrap_or_default();
   let (impl_generics, ty_generics, where_clause) = &struct_.generics.split_for_impl();
   Ok(quote! {
     #[automatically_derived]
-    impl #impl_generics #ident #ty_generics #where_clause {
+    impl #impl_generics #trait_ #ident #ty_generics #where_clause {
       #(#getters)*
     }
   })
@@ -284,18 +329,30 @@ fn getters(input: TokenStream) -> syn::Result<TokenStream> {
 struct StructOptions {
   copy: bool,
   vis: Visibility,
+  trait_impl: Option<Path>,
 }
 
 impl StructOptions {
   /// Initialize a [`FieldOptions`] with inherited defaults.
   fn field_opts(&self) -> FieldOptions {
-    FieldOptions { copy: self.copy, skip: false, vis: self.vis.clone() }
+    FieldOptions {
+      copy: self.copy,
+      skip: false,
+      vis: match &self.trait_impl {
+        Some(_) => Visibility::Inherited,
+        None => self.vis.clone(),
+      },
+    }
   }
 }
 
 impl Default for StructOptions {
   fn default() -> Self {
-    Self { copy: false, vis: Visibility::Public(syn::Token![pub](Span::call_site())) }
+    Self {
+      copy: false,
+      vis: Visibility::Public(syn::Token![pub](Span::call_site())),
+      trait_impl: None,
+    }
   }
 }
 
